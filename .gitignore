@@ -1,3 +1,6 @@
 .env
 .venv/
 __pycache__/
+app/main_backup.py
+
+app/main_backup.py
