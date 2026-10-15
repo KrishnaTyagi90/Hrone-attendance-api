@@ -1,26 +1,69 @@
-# Candidate kit
+# Employee Attendance & Analytics API
 
-Read in this order:
+## Project Overview
+A REST API built using Python, FastAPI, and MongoDB to manage employee attendance records.
 
-1. `PROBLEM_STATEMENT.docx`: what you are asked to do, how it is evaluated.
-2. `openapi.yaml`: the API contract and the business rules (R1 - R10).
-3. `DATA_MODEL.md`: what is stored in MongoDB, with nine sample documents.
-4. `app/main.py`: the starter. Put **all** your code in this one file. It must start with `uvicorn app.main:app --port 8000`.
-5. `REVIEW.md`, `DECISIONS.md`: templates to fill in.
+## Technologies Used
+- Python
+- FastAPI
+- MongoDB
+- Pydantic
 
-`sample_data/` holds the nine sample documents as MongoDB Extended JSON; `sample_seed.py` loads them. The grader's dataset is
-much larger and contains cases they do not show.
+## Features
+- Employee records management
+- Employee attendance listing
+- Employee punch-in and punch-out
+- Attendance filtering by employee code, date range, and status
+- Pagination for attendance records
+- Health check endpoint
 
-## Local setup
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env            # set MONGO_URI / MONGO_DB (local docker: docker run -p 27017:27017 mongo:7)
-python sample_seed.py
-uvicorn app.main:app --port 8000 --reload
-```
-MongoDB **6.0 or newer** is required (the grader uses 7.0). MongoDB Atlas free tier (M0) works.
+## Setup Instructions
 
-## Submit
-A public Git repository with `app/main.py`, `requirements.txt`, `REVIEW.md`, `DECISIONS.md` and a short `README.md`.
-No `.env`, no secrets, no Dockerfile.
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/KrishnaTyagi90/Hrone-attendance-api.git
+   cd Hrone-attendance-api
+   ```
+
+2. Create and activate a virtual environment:
+   ```bash
+   python -m venv .venv
+   ```
+
+   On Windows:
+   ```bash
+   .venv\Scripts\activate
+   ```
+
+3. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. Configure the MongoDB connection using environment variables. Do not commit credentials or the `.env` file.
+
+5. Start the API:
+   ```bash
+   uvicorn app.main:app --port 8000 --reload
+   ```
+
+6. Open the API documentation:
+   http://127.0.0.1:8000/docs
+
+## API Endpoints
+- `GET /health` — Check application and database status
+- `POST /employees` — Create an employee
+- `GET /employees` — List employees
+- `POST /attendance/punch-in` — Record punch-in
+- `POST /attendance/punch-out` — Record punch-out
+- `GET /attendance` — List and filter attendance records
+
+Refer to the API documentation for request schemas and available parameters.
+
+## Project Documents
+- `REVIEW.md` — Code review notes
+- `DECISIONS.md` — Design decisions
+- `DATA_MODEL.md` — Database model information
+
+## Security
+Never commit database credentials, API keys, or other secrets.
