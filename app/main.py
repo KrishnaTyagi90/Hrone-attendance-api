@@ -30,21 +30,60 @@ app = FastAPI(title="Employee Attendance & Analytics API", version="2.0.0")
 # --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #
+
+
 def compute_late_minutes(punch_in: datetime, shift_start: str) -> int:
     h, m = map(int, shift_start.split(":"))
-    start = punch_in.replace(hour=h, minute=m, second=0, microsecond=0)
-    minutes = int((punch_in - start).total_seconds() / 60)
-    return minutes if minutes > 10 else 0
+
+    shift_start_time = punch_in.replace(
+        hour=h, minute=m, second=0, microsecond=0
+    )
+
+    late_minutes = int(
+        (punch_in - shift_start_time).total_seconds() / 60
+    )
+
+    return max(0, late_minutes) if late_minutes > 10 else 0
 
 
-def compute_work_hours(punch_in: datetime, punch_out: datetime) -> float:
-    return round((punch_out - punch_in).total_seconds() / 3600, 2)
+
+def compute_work_hours(
+    punch_in: datetime,
+    punch_out: datetime
+) -> float:
+    seconds = (punch_out - punch_in).total_seconds()
+
+    if seconds < 0:
+        raise ValueError("Punch-out cannot be before punch-in")
+
+    return round(seconds / 3600, 2)
 
 
-def compute_overtime(punch_out: datetime, shift_end: str, date_str: str) -> int:
-    h, m = map(int, shift_end.split(":"))
-    end = datetime.fromisoformat(date_str).replace(hour=h, minute=m, tzinfo=IST)
-    return max(0, int((punch_out - end).total_seconds() / 60))
+def compute_overtime(
+    punch_out: datetime,
+    shift_end: str,
+    date_str: str,
+    shift_start: str
+) -> int:
+    end_h, end_m = map(int, shift_end.split(":"))
+    start_h, start_m = map(int, shift_start.split(":"))
+
+    shift_start_time = datetime.fromisoformat(date_str).replace(
+        hour=start_h, minute=start_m
+    )
+
+    shift_end_time = datetime.fromisoformat(date_str).replace(
+        hour=end_h, minute=end_m
+    )
+
+    # Overnight shift: shift end is on the next day
+    if shift_end_time <= shift_start_time:
+        shift_end_time += timedelta(days=1)
+
+    return max(
+        0,
+        int((punch_out - shift_end_time).total_seconds() / 60)
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -64,14 +103,30 @@ class PunchInIn(BaseModel):
     emp_code: str
     punched_at: Optional[int] = None
     status: str = "PRESENT"
+class PunchOutIn(BaseModel):
+    emp_code: str
+    punched_at: Optional[int] = None
 
 
 # --------------------------------------------------------------------------- #
 # Endpoints provided
 # --------------------------------------------------------------------------- #
+#@app.get("/health")
+#def health():
+ #   return {"status": "ok"}
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    try:
+        db.command("ping")
+        return {
+            "status": "ok",
+            "database": "connected"
+        }
+    except Exception:
+        return {
+            "status": "error",
+            "database": "disconnected"
+        }
 
 
 @app.post("/employees", status_code=201)
@@ -90,7 +145,9 @@ def list_employees(department: Optional[str] = None, page: int = 1, page_size: i
     q = {}
     if department:
         q["department"] = department
-    skip = page * page_size
+    
+    skip = (page - 1) * page_size
+
     total = db.employees.count_documents({})
     items = list(db.employees.find(q, {"_id": 0}).skip(skip).limit(page_size))
     return {"items": items, "total": total, "page": page, "page_size": page_size}
@@ -119,6 +176,62 @@ def punch_in(body: PunchInIn):
     doc["id"] = str(res.inserted_id)
     doc.pop("_id", None)
     return doc
+
+@app.post("/attendance/punch-out")
+def punch_out(body: PunchOutIn):
+    emp = db.employees.find_one({"emp_code": body.emp_code})
+    if not emp:
+        raise HTTPException(404, "employee not found")
+
+    ts = (
+        datetime.fromtimestamp(body.punched_at / 1000)
+        if body.punched_at is not None
+        else datetime.now()
+    )
+
+    doc = db.attendance_logs.find_one(
+        {
+            "emp_code": body.emp_code,
+            "punch_out": None,
+        },
+        sort=[("date", -1)],
+    )
+
+    if not doc:
+        raise HTTPException(404, "no open attendance record found")
+
+    punch_in_time = doc.get("punch_in")
+    if not punch_in_time:
+        raise HTTPException(400, "punch-in time is missing")
+
+    if ts < punch_in_time:
+        raise HTTPException(400, "punch-out cannot be before punch-in")
+
+    work_hours = compute_work_hours(punch_in_time, ts)
+
+    
+    overtime_minutes = compute_overtime(
+        ts,
+        emp["shift_end"],
+        doc["date"],
+        emp["shift_start"]
+    )
+
+
+    db.attendance_logs.update_one(
+        {"_id": doc["_id"]},
+        {
+            "$set": {
+                "punch_out": ts,
+                "work_hours": work_hours,
+                "overtime_minutes": overtime_minutes,
+            }
+        },
+    )
+
+    updated = db.attendance_logs.find_one({"_id": doc["_id"]})
+    updated["id"] = str(updated.pop("_id"))
+    return updated
 
 
 @app.get("/attendance")
